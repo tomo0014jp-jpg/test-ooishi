@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>打ち合わせの持ち物チェック</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; padding: 64px 20px; background: #f4f6f5; color: #243d35; font-family: system-ui, sans-serif; }
+    main { width: min(100%, 560px); margin: auto; padding: 36px; background: white; border: 1px solid #e2e9e5; border-radius: 20px; box-shadow: 0 12px 40px #243d3508; }
+    .eyebrow { margin: 0 0 12px; color: #648477; font-size: 12px; letter-spacing: .15em; }
+    h1 { margin: 0 0 12px; font-size: clamp(22px, 5vw, 28px); letter-spacing: -.03em; }
+    .intro, footer { color: #718078; font-size: 13px; line-height: 1.8; }
+    form { display: flex; gap: 8px; margin: 28px 0 22px; }
+    input[type="text"] { width: 100%; min-width: 0; padding: 13px; border: 1px solid #d6dfda; border-radius: 8px; font: inherit; font-size: 14px; }
+    button { cursor: pointer; border: 0; border-radius: 8px; font: inherit; white-space: nowrap; }
+    .add { padding: 10px 18px; background: #2d6552; color: white; }
+    button:hover { filter: brightness(.94); }
+    :focus-visible { outline: 3px solid #76bba0; outline-offset: 3px; }
+    .status { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 13px; color: #718078; }
+    #reset { padding: 8px 10px; color: #526b60; background: #eef3f0; font-size: 12px; }
+    progress { width: 100%; height: 6px; display: block; margin: 12px 0 16px; border: 0; border-radius: 9px; overflow: hidden; accent-color: #398363; }
+    progress::-webkit-progress-bar { background: #eef3f0; }
+    progress::-webkit-progress-value { background: #398363; }
+    ul { list-style: none; padding: 0; margin: 0; }
+    li { display: flex; align-items: center; gap: 12px; min-height: 58px; border-bottom: 1px solid #edf0ee; }
+    label { display: flex; align-items: center; gap: 12px; flex: 1; cursor: pointer; padding: 14px 0; min-width: 0; }
+    input[type="checkbox"] { width: 19px; height: 19px; margin: 0; flex-shrink: 0; accent-color: #2d6552; cursor: pointer; }
+    .item-text { overflow-wrap: anywhere; font-size: 15px; }
+    input:checked + .item-text { text-decoration: line-through; color: #98a49e; }
+    .delete { width: 34px; height: 34px; background: transparent; color: #91a098; font-size: 22px; }
+    .delete:hover { color: #ac4b4b; background: #fcf0f0; }
+    #empty { text-align: center; padding: 30px 0; color: #718078; font-size: 14px; }
+    footer { margin-top: 24px; font-size: 12px; }
+    @media (max-width: 480px) { body { padding: 24px 14px; } main { padding: 25px 20px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">MEETING CHECKLIST</p>
+    <h1>打ち合わせの持ち物</h1>
+    <p class="intro">出発前に、ひとつずつ確認しましょう。</p>
+    <form id="add-form">
+      <input id="new-item" type="text" aria-label="追加する持ち物" placeholder="持ち物を追加…" maxlength="150" required>
+      <button class="add" type="submit">＋ 追加</button>
+    </form>
+    <div class="status">
+      <span id="count" role="status" aria-live="polite"></span>
+      <button id="reset" type="button">チェックをリセット</button>
+    </div>
+    <progress id="progress" value="0" max="1" aria-label="持ち物の準備状況"></progress>
+    <ul id="list" aria-label="持ち物一覧"></ul>
+    <p id="empty" hidden>持ち物を追加して、準備を始めましょう。</p>
+    <footer id="save-status">内容はこのブラウザに自動保存されます。</footer>
+  </main>
+  <script>
+    const storageKey = 'meeting-checklist-v1';
+    let items = ['ノートパソコン', '充電器', 'ノート・筆記用具', '名刺', '打ち合わせ資料'].map(text => ({ text, checked: false }));
+    try {
+      const saved = JSON.parse(localStorage.getItem(storageKey));
+      if (Array.isArray(saved) && saved.every(item => item && typeof item.text === 'string' && typeof item.checked === 'boolean')) items = saved;
+    } catch { /* 保存できない環境でもチェックリストを利用可能にする */ }
+    const list = document.querySelector('#list');
+    function save() {
+      try { localStorage.setItem(storageKey, JSON.stringify(items)); }
+      catch { document.querySelector('#save-status').textContent = '自動保存を利用できません。このページを閉じると内容が失われます。'; }
+    }
+    function render() {
+      list.replaceChildren();
+      items.forEach((item, index) => {
+        const row = document.createElement('li');
+        const label = document.createElement('label');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = item.checked;
+        checkbox.addEventListener('change', () => { item.checked = checkbox.checked; save(); updateProgress(); });
+        const text = document.createElement('span');
+        text.className = 'item-text';
+        text.textContent = item.text;
+        label.append(checkbox, text);
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'delete';
+        remove.textContent = '×';
+        remove.setAttribute('aria-label', item.text + 'を削除');
+        remove.addEventListener('click', () => {
+          items.splice(index, 1); save(); render();
+          const remaining = list.querySelectorAll('.delete');
+          (remaining[Math.min(index, remaining.length - 1)] || document.querySelector('#new-item')).focus();
+        });
+        row.append(label, remove);
+        list.append(row);
+      });
+      document.querySelector('#empty').hidden = items.length > 0;
+      updateProgress();
+    }
+    function updateProgress() {
+      const done = items.filter(item => item.checked).length;
+      document.querySelector('#count').textContent = `${done} / ${items.length} 個 準備できました`;
+      const progress = document.querySelector('#progress');
+      progress.max = items.length || 1;
+      progress.value = done;
+      document.querySelector('#reset').disabled = done === 0;
+    }
+    document.querySelector('#add-form').addEventListener('submit', event => {
+      event.preventDefault();
+      const input = document.querySelector('#new-item');
+      const text = input.value.trim();
+      if (!text) { input.value = ''; input.focus(); return; }
+      items.push({ text, checked: false });
+      input.value = ''; save(); render(); input.focus();
+    });
+    document.querySelector('#reset').addEventListener('click', () => {
+      items.forEach(item => { item.checked = false; });
+      save(); render();
+    });
+    render();
+  </script>
+</body>
+</html>
